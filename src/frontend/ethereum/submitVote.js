@@ -1,29 +1,47 @@
 const Web3 = require('web3');
+const Joi = require('joi');
+require('dotenv').config();  // Carrega variáveis de ambiente de um arquivo .env para process.env
 const contractABI = require('./STVPollABI.json');  // ABI do contrato STVPoll
-const contractAddress = '0x1234...';  // Endereço do contrato STVPoll implantado
 
-const web3 = new Web3('https://mainnet.infura.io/v3/YOUR_INFURA_PROJECT_ID');  // Conexão com a Mainnet da Ethereum
+// Use variáveis de ambiente para dados sensíveis
+const contractAddress = process.env.CONTRACT_ADDRESS;  // Endereço do contrato STVPoll implantado
+const web3 = new Web3(process.env.INFURA_PROJECT_URL);  // Conexão com a Mainnet da Ethereum
 
+// Função de envio de votos encapsulada com validação de entrada
 async function submitVote(voterAddress, voteProof, preferences) {
-    const contract = new web3.eth.Contract(contractABI, contractAddress);
+    // Definição do esquema de validação usando Joi
+    const schema = Joi.object({
+        proof: Joi.object({
+            a: Joi.string().required(),
+            b: Joi.string().required(),
+            c: Joi.string().required(),
+            input: Joi.array().items(Joi.string()).required()
+        }).required(),
+        preferences: Joi.array().items(Joi.number()).required()
+    });
 
-    const { a, b, c, input } = voteProof;
+    // Validação dos dados de entrada
+    const { error } = schema.validate({ proof: voteProof, preferences });
+    if (error) {
+        throw new Error(`Invalid input data: ${error.details[0].message}`);
+    }
 
-    const tx = contract.methods.castVote(a, b, c, input, preferences);
+    try {
+        // Inicializa o contrato com o ABI e o endereço do contrato
+        const contract = new web3.eth.Contract(contractABI, contractAddress);
 
-    const gas = await tx.estimateGas({ from: voterAddress });
-    const gasPrice = await web3.eth.getGasPrice();
+        // Estima o gás necessário para a transação
+        const gasEstimate = await contract.methods.submitVote(voteProof, preferences).estimateGas({ from: voterAddress });
 
-    const txData = {
-        from: voterAddress,
-        to: contractAddress,
-        data: tx.encodeABI(),
-        gas,
-        gasPrice,
-    };
-
-    const signedTx = await web3.eth.accounts.signTransaction(txData, 'YOUR_PRIVATE_KEY');
-    const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
-
-    console.log('Vote submitted:', receipt.transactionHash);
+        // Envia a transação
+        const tx = await contract.methods.submitVote(voteProof, preferences).send({ from: voterAddress, gas: gasEstimate });
+        
+        // Retorna a transação com sucesso
+        return tx;
+    } catch (err) {
+        // Tratamento de erro para falha no envio do voto
+        throw new Error(`Failed to submit vote: ${err.message}`);
+    }
 }
+
+module.exports = { submitVote };

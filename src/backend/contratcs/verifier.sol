@@ -8,7 +8,7 @@ contract Verifier {
         uint[2] memory c,
         uint[] memory input
     ) public view returns (bool) {
-        // Placeholder para a função de verificação zk-SNARK
+        // Implementação futura da verificação zk-SNARK
         return true;
     }
 }
